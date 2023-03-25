@@ -8,7 +8,6 @@ import fs from "fs";
 import path from "path";
 import { Configuration, OpenAIApi, CreateCompletionRequest, CreateCompletionResponse } from "openai";
 import { Blob } from "buffer";
-import { RedisClientType, createClient } from "redis";
 import { WechatyEventListenerMessage, WechatyEventListenerScan, WechatyEventListenerLogin, WechatyEventListenerLogout, WechatyEventListenerError } from "wechaty/dist/esm/src/schemas/wechaty-events";
 const router = express.Router({ caseSensitive: true });
 import axios, { AxiosResponse, AxiosRequestHeaders, AxiosHeaders } from "axios";
@@ -19,7 +18,7 @@ interface tableData {
 
 }
 type username = string
-type user = { name?: string, token: string, isLoggedOut?: boolean, contact?: any, phone?: any }
+type user = { name?: string, token: string, isLoggedOut?: boolean }
 
 interface userData extends tableData {
   [key: username]: user
@@ -39,22 +38,11 @@ type botListenners = {
 class Database {
   private tables: Map<string, Table> = new Map();
   databaseName: string
-  redis: RedisClientType
   constructor(databaseName: string) {
     this.databaseName = databaseName;
-    this.redis = createClient({
-      password: 'OyHV5ACyC3x7tKrXYDqWkeMYWxaTpMsu',
-      socket: {
-        host: 'redis-19723.c302.asia-northeast1-1.gce.cloud.redislabs.com',
-        port: 19723//,username:"default"
-      }
-    });
-    this.redis.connect();
-
-    this.redis.on('connect', () => console.log('Redis Client Connected'));
   }
   createTable(tablename: string): Table {
-    return new Table(tablename, this.redis);
+    return new Table(tablename);
   }
 
   deleteTable(tablename: string) {
@@ -74,22 +62,16 @@ class Database {
 
 class Table {
   tablename: string
-  redis: RedisClientType
-  constructor(tablename: string, redis: RedisClientType) {
+  constructor(tablename: string) {
     this.tablename = tablename;
-    this.redis = redis;
+
   }
 
   private dataTemplate = JSON.stringify({ users: {}, msgRecord: {} })
 
   private readFile<T extends tableData>(): Promise<T> {
     const self = this;
-    return new Promise<T>(async (resolve) => {
-      const v = await this.redis.get(this.tablename);
-      resolve(JSON.parse(v || '{}'));
-    })
-
-    new Promise<T>((resolve) => {
+    return new Promise<T>((resolve) => {
       const userpath = path.join(process.cwd(), 'data/', self.tablename + '.json');
       fs.access(userpath, fs.constants.F_OK, (error: any) => {
 
@@ -122,10 +104,6 @@ class Table {
   }
   writeData<T extends tableData>(data: T) {
     const dataStr = JSON.stringify(data);
-    console.log('write data', data);
-
-    return this.redis.set(this.tablename, dataStr);
-
     const userpath = path.join(process.cwd(), 'data/', this.tablename + '.json')
     fs.writeFile(userpath, dataStr, {}, function (error) {
       error && console.log('failed to write user data', error) || (2)
@@ -173,31 +151,17 @@ function getOrSetBotToken(req: Request, res: Response): string {
 function getInitBotListenners(): botListenners {
   return {
     onerror(this: WechatyInterface, err) {
-      this.reset().then(() => {
-        this.logout();
-        console.log('encoutered a problem so it reset');
-
-      })
+      this.logout()
     },
-    async onlogin(this: WechatyInterface, self: ContactSelf) {
+    onlogin(this: WechatyInterface, self: ContactSelf) {
       console.log("success login");//todo 只要有请求就被迫下线
-      const info = weakMapUsrRequestInfo.get(this);
-      let contactArr = await this.Contact.findAll();
-      const phone = await self.phone()
-      const contact = await contactArr.map(async (contact) => {
-        const city = contact.city()
-        const name = contact.name();
-        const gender = contact.gender()
-        const phone = await contact.phone();
-        const province = contact.province();
-        return { city, name, gender, phone, province }
-      })
+      const info = weakMapUsrRequestInfo.get(this)
       if (info?.token) {
         getUsers<userData>(tb).then(async (data) => {
           const alias = await self.alias()
           console.log('has ..........................', alias, data);
 
-          data[info.token] = { isLoggedOut: false, token: info.token, name: alias, contact, phone }
+          data[info.token] = { isLoggedOut: false, token: info.token, name: alias }
           setUsers(data);
 
         })
@@ -208,7 +172,7 @@ function getInitBotListenners(): botListenners {
       console.log("logout");
       const token = weakMapUsrRequestInfo.get(this)?.token
       token &&
-        (deactiveUser(token)/* , mapBots.delete(token) */) || console.log('witt:encoutered error Onlogout');
+        (deactiveUser(token), mapBots.delete(token)) || console.log('witt:encoutered error Onlogout');
 
     },
     onscan(this: WechatyInterface, qrcode: string, status) {
@@ -249,30 +213,21 @@ function getInitBotListenners(): botListenners {
   }
 }
 
-let currentBot:WechatyInterface
 router.get("/login", function (req, res) {
   const token = req.cookies['chatbotToken']
   const bot = mapBots.get(token);
-  if (token===currentBot.name()) { //the same user
-    
-  }else{
-    
-    currentBot.Location()
-  }
   //todo find actived bot
 
   if (bot && bot.isLoggedIn)
     res.end("You have logged in!");
   else
-    //bot && mapBots.delete(token), 
-    mapBots.clear(),
-      createAndRunBot(getOrSetBotToken(req, res)).then((bot) => {
+    bot && mapBots.delete(token), createAndRunBot(getOrSetBotToken(req, res)).then((bot) => {
 
-        bindBotEvt.call(bot, getInitBotListenners())
-        mapBots.set(token, bot);
-        weakMapUsrRequestInfo.set(bot, { token, res }); console.log('create and run bot successfully');
+      bindBotEvt.call(bot, getInitBotListenners())
+      mapBots.set(token, bot);
+      weakMapUsrRequestInfo.set(bot, { token, res }); console.log('create and run bot successfully');
 
-      })
+    })
   //what time?
 });
 
@@ -309,8 +264,8 @@ async function createAndRunBot(
 
   const bot = WechatyBuilder.build({
     //@ts-ignore
-    puppet: new PuppetPadlocal({ token: "67f5cc1db0f84923827097fd1bfe6e7d", /* timeoutSeconds: 8000  */ }),
-    name: "wechat",
+    puppet: new PuppetPadlocal({ token: "67f5cc1db0f84923827097fd1bfe6e7d" }),
+    name: "wechat" + token,
     /*  puppetOptions: {
        uos: true,
        //token,
@@ -333,7 +288,7 @@ async function createAndRunBot(
 function initOpenAI(): OpenAIApi {
   const config: Configuration = new Configuration({
     organization: "Witt",
-    apiKey: "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",
+    apiKey: "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",
   });
   return new OpenAIApi(config);
 }
@@ -344,7 +299,7 @@ async function responseMsg(bot: WechatyInterface, msg: MessageInterface) {
   let alias = await talker.name() as string
   let phones = await talker.phone()
   let isSentByMe = msg.self();
-  const myself = bot.currentUser.name()//msg.listener()?.name()
+  const myself = bot.currentUser.name//msg.listener()?.name()
   /*   msg.toSayable().then((say) => {//相当于拷贝人家的文字从而转发
       console.log('sayable', say);
     }) */
@@ -369,8 +324,8 @@ async function responseMsg(bot: WechatyInterface, msg: MessageInterface) {
       presence_penalty: 0.0,
       // stop: ["Witt","YOU"],
     }
-    const Lm = ["gpt-4", 'text-davinci-003','gpt-3.5-turbo']
-    const res: CreateCompletionResponse = await axios.post(`https://api.openai.com/v1/engines/${Lm[2]}/completions`,
+    const Lm = ["gpt-4", 'text-davinci-003']
+    const res: CreateCompletionResponse = await axios.post(`https://api.openai.com/v1/engines/${Lm[0]}/completions`,
       data, {
       headers: {
         'Content-Type': 'application/json',
@@ -405,8 +360,8 @@ async function responseMsg(bot: WechatyInterface, msg: MessageInterface) {
     //msg.say(say);
 
     console.log('it said', res.choices);
-    const resText = res.choices[0].text?.trim();
-    resText && msg.say(resText);
+    const resText = res.choices[0].text
+    resText && msg.say('' + resText);
     outputLog(weakMapUsrRequestInfo.get(bot)?.token, { "消息日期：": date, '消息：': alias + ' ' + phones + '说：' + text, resText: myself + '回复道：' + resText, "是否@了我：": MentionedMe, '群聊：': room?.memberAll?.() });
 
 
@@ -429,7 +384,6 @@ async function InitBots(map: allBots, mapBotToken: mapUsrRequestInfo) {
 
   const userTB: userData = await getUsers<userData>(tb);
   userTB && Object.values(userTB).map((user: user) => {
-    console.log('initbot', user);
 
     user.isLoggedOut || createAndRunBot(user.token).then((bot: WechatyInterface) => {
       bindBotEvt.call(bot, getInitBotListenners())
@@ -447,19 +401,7 @@ const tbLogs = database.createTable('logs');
 const mapBots: allBots = new Map()
 const weakMapUsrRequestInfo: mapUsrRequestInfo = new WeakMap<WechatyInterface, { token: username, res?: Response }>();
 
-/* tb.writeData({"witt":0}).then(()=>{
-  tb.readData().then((data)=>{
-console.log(data);
-  })
-}) */
-//InitBots(mapBots, weakMapUsrRequestInfo)
+InitBots(mapBots,weakMapUsrRequestInfo)
 
-/* process.on("beforeExit", function () {
-  mapBots.forEach((bot) => {
-    bot.logout();
-    const token = weakMapUsrRequestInfo.get(bot)?.token;
-    token && deactiveUser(token);
-  })
-}) */
 
 

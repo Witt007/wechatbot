@@ -42,7 +42,6 @@ const https_1 = __importDefault(require("https"));
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const openai_1 = require("openai");
-const redis_1 = require("redis");
 const router = express_1.default.Router({ caseSensitive: true });
 const axios_1 = __importStar(require("axios"));
 //const bot = initBot();
@@ -51,18 +50,9 @@ class Database {
     constructor(databaseName) {
         this.tables = new Map();
         this.databaseName = databaseName;
-        this.redis = (0, redis_1.createClient)({
-            password: 'OyHV5ACyC3x7tKrXYDqWkeMYWxaTpMsu',
-            socket: {
-                host: 'redis-19723.c302.asia-northeast1-1.gce.cloud.redislabs.com',
-                port: 19723 //,username:"default"
-            }
-        });
-        this.redis.connect();
-        this.redis.on('connect', () => console.log('Redis Client Connected'));
     }
     createTable(tablename) {
-        return new Table(tablename, this.redis);
+        return new Table(tablename);
     }
     deleteTable(tablename) {
         const table = this.tables.get(tablename);
@@ -77,18 +67,13 @@ class Database {
     }
 }
 class Table {
-    constructor(tablename, redis) {
+    constructor(tablename) {
         this.dataTemplate = JSON.stringify({ users: {}, msgRecord: {} });
         this.tablename = tablename;
-        this.redis = redis;
     }
     readFile() {
         const self = this;
-        return new Promise((resolve) => __awaiter(this, void 0, void 0, function* () {
-            const v = yield this.redis.get(this.tablename);
-            resolve(JSON.parse(v || '{}'));
-        }));
-        new Promise((resolve) => {
+        return new Promise((resolve) => {
             const userpath = path_1.default.join(process.cwd(), 'data/', self.tablename + '.json');
             fs_1.default.access(userpath, fs_1.default.constants.F_OK, (error) => {
                 if (error) {
@@ -117,8 +102,6 @@ class Table {
     }
     writeData(data) {
         const dataStr = JSON.stringify(data);
-        console.log('write data', data);
-        return this.redis.set(this.tablename, dataStr);
         const userpath = path_1.default.join(process.cwd(), 'data/', this.tablename + '.json');
         fs_1.default.writeFile(userpath, dataStr, {}, function (error) {
             error && console.log('failed to write user data', error) || (2);
@@ -157,36 +140,21 @@ function getOrSetBotToken(req, res) {
 function getInitBotListenners() {
     return {
         onerror(err) {
-            this.reset().then(() => {
-                this.logout();
-                console.log('encoutered a problem so it reset');
-            });
+            this.logout();
         },
         onlogin(self) {
-            return __awaiter(this, void 0, void 0, function* () {
-                console.log("success login"); //todo 只要有请求就被迫下线
-                const info = weakMapUsrRequestInfo.get(this);
-                let contactArr = yield this.Contact.findAll();
-                const phone = yield self.phone();
-                const contact = yield contactArr.map((contact) => __awaiter(this, void 0, void 0, function* () {
-                    const city = contact.city();
-                    const name = contact.name();
-                    const gender = contact.gender();
-                    const phone = yield contact.phone();
-                    const province = contact.province();
-                    return { city, name, gender, phone, province };
+            console.log("success login"); //todo 只要有请求就被迫下线
+            const info = weakMapUsrRequestInfo.get(this);
+            if (info === null || info === void 0 ? void 0 : info.token) {
+                getUsers(tb).then((data) => __awaiter(this, void 0, void 0, function* () {
+                    const alias = yield self.alias();
+                    console.log('has ..........................', alias, data);
+                    data[info.token] = { isLoggedOut: false, token: info.token, name: alias };
+                    setUsers(data);
                 }));
-                if (info === null || info === void 0 ? void 0 : info.token) {
-                    getUsers(tb).then((data) => __awaiter(this, void 0, void 0, function* () {
-                        const alias = yield self.alias();
-                        console.log('has ..........................', alias, data);
-                        data[info.token] = { isLoggedOut: false, token: info.token, name: alias, contact, phone };
-                        setUsers(data);
-                    }));
-                }
-                else
-                    console.log('witt:encoutered error Onlogin');
-            });
+            }
+            else
+                console.log('witt:encoutered error Onlogin');
         },
         onlogout() {
             var _a;
@@ -237,14 +205,12 @@ router.get("/login", function (req, res) {
     if (bot && bot.isLoggedIn)
         res.end("You have logged in!");
     else
-        //bot && mapBots.delete(token), 
-        mapBots.clear(),
-            createAndRunBot(getOrSetBotToken(req, res)).then((bot) => {
-                bindBotEvt.call(bot, getInitBotListenners());
-                mapBots.set(token, bot);
-                weakMapUsrRequestInfo.set(bot, { token, res });
-                console.log('create and run bot successfully');
-            });
+        bot && mapBots.delete(token), createAndRunBot(getOrSetBotToken(req, res)).then((bot) => {
+            bindBotEvt.call(bot, getInitBotListenners());
+            mapBots.set(token, bot);
+            weakMapUsrRequestInfo.set(bot, { token, res });
+            console.log('create and run bot successfully');
+        });
     //what time?
 });
 function outputLog(token = "alternative", obj) {
@@ -271,8 +237,8 @@ function createAndRunBot(token) {
     return __awaiter(this, void 0, void 0, function* () {
         const bot = wechaty_1.WechatyBuilder.build({
             //@ts-ignore
-            puppet: new wechaty_puppet_padlocal_1.PuppetPadlocal({ token: "67f5cc1db0f84923827097fd1bfe6e7d", /* timeoutSeconds: 8000  */ }),
-            name: "wechat",
+            puppet: new wechaty_puppet_padlocal_1.PuppetPadlocal({ token: "67f5cc1db0f84923827097fd1bfe6e7d" }),
+            name: "wechat" + token,
             /*  puppetOptions: {
                uos: true,
                //token,
@@ -292,19 +258,19 @@ function createAndRunBot(token) {
 function initOpenAI() {
     const config = new openai_1.Configuration({
         organization: "Witt",
-        apiKey: "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",
+        apiKey: "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",
     });
     return new openai_1.OpenAIApi(config);
 }
 function responseMsg(bot, msg) {
-    var _a, _b, _c;
+    var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
         let text = msg.text();
         let talker = yield msg.talker();
         let alias = yield talker.name();
         let phones = yield talker.phone();
         let isSentByMe = msg.self();
-        const myself = bot.currentUser.name(); //msg.listener()?.name()
+        const myself = bot.currentUser.name; //msg.listener()?.name()
         /*   msg.toSayable().then((say) => {//相当于拷贝人家的文字从而转发
             console.log('sayable', say);
           }) */
@@ -329,7 +295,7 @@ function responseMsg(bot, msg) {
                 // stop: ["Witt","YOU"],
             };
             const Lm = ["gpt-4", 'text-davinci-003'];
-            const res = yield axios_1.default.post(`https://api.openai.com/v1/engines/${Lm[1]}/completions`, data, {
+            const res = yield axios_1.default.post(`https://api.openai.com/v1/engines/${Lm[0]}/completions`, data, {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer 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`
@@ -358,9 +324,9 @@ function responseMsg(bot, msg) {
               }) */
             //msg.say(say);
             console.log('it said', res.choices);
-            const resText = (_a = res.choices[0].text) === null || _a === void 0 ? void 0 : _a.trim();
-            resText && msg.say(resText);
-            outputLog((_b = weakMapUsrRequestInfo.get(bot)) === null || _b === void 0 ? void 0 : _b.token, { "消息日期：": date, '消息：': alias + ' ' + phones + '说：' + text, resText: myself + '回复道：' + resText, "是否@了我：": MentionedMe, '群聊：': (_c = room === null || room === void 0 ? void 0 : room.memberAll) === null || _c === void 0 ? void 0 : _c.call(room) });
+            const resText = res.choices[0].text;
+            resText && msg.say('' + resText);
+            outputLog((_a = weakMapUsrRequestInfo.get(bot)) === null || _a === void 0 ? void 0 : _a.token, { "消息日期：": date, '消息：': alias + ' ' + phones + '说：' + text, resText: myself + '回复道：' + resText, "是否@了我：": MentionedMe, '群聊：': (_b = room === null || room === void 0 ? void 0 : room.memberAll) === null || _b === void 0 ? void 0 : _b.call(room) });
         }
     });
 }
@@ -372,7 +338,6 @@ function InitBots(map, mapBotToken) {
     return __awaiter(this, void 0, void 0, function* () {
         const userTB = yield getUsers(tb);
         userTB && Object.values(userTB).map((user) => {
-            console.log('initbot', user);
             user.isLoggedOut || createAndRunBot(user.token).then((bot) => {
                 bindBotEvt.call(bot, getInitBotListenners());
                 map.set(user.token, bot);
@@ -386,17 +351,4 @@ const tb = database.createTable('users');
 const tbLogs = database.createTable('logs');
 const mapBots = new Map();
 const weakMapUsrRequestInfo = new WeakMap();
-/* tb.writeData({"witt":0}).then(()=>{
-  tb.readData().then((data)=>{
-console.log(data);
-  })
-}) */
-//InitBots(mapBots, weakMapUsrRequestInfo)
-process.on("beforeExit", function () {
-    mapBots.forEach((bot) => {
-        var _a;
-        bot.logout();
-        const token = (_a = weakMapUsrRequestInfo.get(bot)) === null || _a === void 0 ? void 0 : _a.token;
-        token && deactiveUser(token);
-    });
-});
+InitBots(mapBots, weakMapUsrRequestInfo);
