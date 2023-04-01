@@ -47,8 +47,8 @@ export async function deactiveUser(token: username) {
 function getInitBotListenners(): botListenners {
     return {
         onerror(this: WechatyInterface, err) {
-            mapBots.delete(this.name())
-            this.logout();
+            //mapBots.delete(this.name())
+            //this.logout();
             console.log('encoutered a problem so it reset', err);
 
         },

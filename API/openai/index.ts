@@ -54,7 +54,7 @@ export async function responseMsg(bot: WechatyInterface, msg: MessageInterface) 
   console.log('isSentByMe', isSentByMe);
 
   function setRules() {
-    if (isSentByMe && (MentionedMe || /@/g.test(text))) {
+    if (isSentByMe) {
       switch (true) {
         case /^stop$/g.test(text):
           status.start = false;
@@ -92,7 +92,8 @@ export async function responseMsg(bot: WechatyInterface, msg: MessageInterface) 
         default:
           break;
       }
-      configTB.writeData(alias, status);
+      configTB.writeData(bot.name(), status).then((a)=>{console.log('write config data ',a);
+      });
     }
   }
 
@@ -103,12 +104,15 @@ export async function responseMsg(bot: WechatyInterface, msg: MessageInterface) 
   }
 
   async function useRules() {
-    const data: statusType = await configTB.readData(alias);
-    data && (status = data) || configTB.writeData(alias, status);
+    const data: statusType = await configTB.readData(bot.name());
+    console.log('configtb',data);
+    
+    data &&Object.keys(data).length&& (status = data) || configTB.writeData(bot.name(), status);
     return status.start && (
       /^( ).*( )$/.test(text) || !isSentByMe && (status.noRules || status.talkWith.includes(talker.name()) || status.talkInRoom && room))
   }
   useRules().then(async (stat) => {
+console.log(status);
 
     if (<boolean>stat) {
       const headers: AxiosRequestHeaders = new AxiosHeaders();
@@ -120,8 +124,8 @@ export async function responseMsg(bot: WechatyInterface, msg: MessageInterface) 
         prompt: text, temperature: status.randomness,
         //top_p: 1,
         frequency_penalty: 0.0,
-        presence_penalty: 0.0, stream: false, n: status.n
-        // stop: ["Witt","YOU"],
+        presence_penalty: 0.0, n: status.n,
+         stop: "\n",
       }
       const Lm = ["gpt-4", 'text-davinci-003', 'gpt-3.5-turbo']
       const res: CreateCompletionResponse = await axios.post(`https://api.openai.com/v1/engines/${Lm[1]}/completions`,
