@@ -1,7 +1,7 @@
 import express, { Request, Response } from "express";
 import bodyParser from "body-parser";
 import cluster from "cluster";
-import https from "https";
+import https from "node:https";
 import http from "http";
 import fs from 'fs'
 //@ts-ignore
@@ -46,7 +46,7 @@ const cert = fs.readFileSync(path.join(__dirname, 'certs/v2ray.pem'));
 const certKey = fs.readFileSync(path.join(__dirname, 'certs/v2ray.key'));
 const server = https.createServer({ cert, key: certKey }, app);
 //const server = http.createServer( app);
-server.listen(82);
+server.listen(88,"0.0.0.0");
 
 initWs(server);
 
@@ -57,7 +57,7 @@ initWs(server);
  * 
  * @param req express.Request
  * @param res express.Response
- * 
+ *  
  */
 function verifyLoggedIn(req: Request, res: Response) {
   let token = req.cookies["chatbotToken"];

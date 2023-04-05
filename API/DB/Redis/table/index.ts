@@ -13,15 +13,15 @@ export class Table {
 
   private dataTemplate = JSON.stringify({ users: {}, msgRecord: {} })
 
-   readData<T extends tableData>(token:string): Promise<T> {
-    return new Promise<T>(async (resolve) => {
+   readData(token:string): Promise<string> {
+    return new Promise<string>(async (resolve) => {
       try {
         console.log('hget',this.redis.hGet);
         
         const v = await this.redis.hGet(this.tablename,token).catch((err)=>{console.log(err,token);
         });
         
-        resolve(JSON.parse(v || '{}'));
+        resolve(v||'');
         
       } catch (error) {
         console.log('reading data encountered an error',error);
@@ -60,11 +60,10 @@ export class Table {
   delete() {
 
   }
-  writeData<T extends tableData>(token:string,data: T) {
-    const dataStr = JSON.stringify(data);
+  writeData(token:string,data: string) {
     //console.log('write data', data);
 
-    return this.redis.hSet(this.tablename,token, dataStr);
+    return this.redis.hSet(this.tablename,token, data);
 
     /*   const userpath = path.join(process.cwd(), 'data/', this.tablename + '.json')
       fs.writeFile(userpath, dataStr, {}, function (error) {

@@ -1,6 +1,5 @@
 import express, { Response, Request } from "express";
 import { ContactSelf, ScanStatus, WechatyBuilder } from "wechaty";
-import { PuppetPadlocal } from 'wechaty-puppet-padlocal'
 import { MessageInterface, WechatyInterface } from "wechaty/impls";
 import https from "https";
 import { IncomingMessage } from "http";
@@ -264,7 +263,7 @@ async function createAndRunBot(
 
   const bot = WechatyBuilder.build({
     //@ts-ignore
-    puppet: new PuppetPadlocal({ token: "67f5cc1db0f84923827097fd1bfe6e7d" }),
+    puppet: 'wechaty-puppet-wechat4u',//new PuppetPadlocal({ token: "67f5cc1db0f84923827097fd1bfe6e7d" }),
     name: "wechat" + token,
     /*  puppetOptions: {
        uos: true,

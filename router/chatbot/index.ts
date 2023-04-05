@@ -41,6 +41,8 @@ router.post("/login", async function (req, res) {
   console.log('token and bot in /login', token, bot?.name());
   if (!bot)
     createAndRunBot(token).then((result) => {
+      console.log('bot.name',result.name());
+      
       //communicateWithBot(res)
       res.end("starting successfully");
     }).catch(() => {
@@ -49,7 +51,7 @@ router.post("/login", async function (req, res) {
   else { //the same user
     // return bot.reset().then(()=>{});
     if (!token) return res.end("seems to encountered a problem: there does not exist a token!")
-    const user = await getUser(token);//getting data from redis must has registered user
+    //const user = await getUser(token);//getting data from redis must has registered user
     const dataFromOnscan:Buffer = getResponseData();
     if (dataFromOnscan) {
       //if exists data, then it demonstrate logged out but the bot still not dispose;

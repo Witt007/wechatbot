@@ -3,7 +3,6 @@ import { ContactSelf, ScanStatus, WechatyBuilder } from "wechaty";
 import { MessageInterface, WechatyInterface } from "wechaty/impls";
 import dotenv from 'dotenv'
 dotenv.config();
-import { PuppetPadlocal } from 'wechaty-puppet-padlocal'
 import https from "https";
 import { IncomingMessage } from "http";
 import { tableData } from "../DB/Redis/table";
@@ -31,11 +30,19 @@ let resData: any = null
 export function getResponseData<T>() {
     return resData;
 }
-export function getUser(token: string): Promise<user> {
-    return tb.readData(token);
+export async function getUser(token: string): Promise<user> {
+    const datastr = await tb.readData(token);
+    return JSON.parse(datastr || "{}")
 }
 export function setUser(token: string, data: user) {
-    return tb.writeData(token, data);
+    return tb.writeData(token, JSON.stringify(data));
+}
+
+async function getCurrUserName(this: WechatyInterface): Promise<string> {
+    const name= this.currentUser.name() || (await this.currentUser.alias()) || '';
+    console.log('getCurrUserName:',this.currentUser.name(),await this.currentUser.alias());
+    
+    return name
 }
 export async function deactiveUser(token: username) {
     getUser(token).then((data) => {
@@ -47,16 +54,15 @@ export async function deactiveUser(token: username) {
 function getInitBotListenners(): botListenners {
     return {
         onerror(this: WechatyInterface, err) {
-            //mapBots.delete(this.name())
-            //this.logout();
+           // this.logout();
             console.log('encoutered a problem so it reset', err);
 
         },
         async onlogin(this: WechatyInterface, self: ContactSelf) {
             console.log("success login");//todo 只要有请求就被迫下线
-            getSoket().close();
             resData = null//dispose the resource 
-            let contactArr = await this.Contact.findAll();
+            const username = await getCurrUserName.call(this);
+            let contactArr = await this.Contact.findAll({ alias: username });
             const phone = await self.phone()
             const contact = contactArr.map(async (contact) => {
                 const city = contact.city();
@@ -66,21 +72,23 @@ function getInitBotListenners(): botListenners {
                 const province = contact.province();
                 return { city, name, gender, phone, province };
             })
-            getUser(this.name()).then(async (data) => {
-                const alias = await self.alias()
+            getUser(username).then(async (data) => {
+                const alias = self.name() || await self.alias()
                 console.log('has ..........................', alias, data);
 
                 data = { isLoggedIn: true, token: this.name(), name: alias, contact, phone }
-                setUser(this.name(), data);
+                setUser(username, data);
             }).then(() => {
-                getSoket()?.send(JSON.stringify({ path: "/login", payload: "ok" }))
+                getSoket()?.send(JSON.stringify({ path: "/login", payload: "ok" }));
+                getSoket().close();
             })
 
         },
-        onlogout(this: WechatyInterface) {
+        async onlogout(this: WechatyInterface) {
             console.log("logout");
-            deactiveUser(this.name());
-            mapBots.delete(this.name())
+            deactiveUser(await getCurrUserName.call(this));
+            //FIXME:
+            mapBots.delete(this.name());
             this.stop()
         },
         onscan(this: WechatyInterface, qrcode: string, status) {
@@ -93,16 +101,12 @@ function getInitBotListenners(): botListenners {
                 console.log("Scanning...", qrcodeImageUrl);
                 https
                     .get(qrcodeImageUrl, function (req: IncomingMessage) {
-                        console.log('headers',req.rawHeaders);
-                        
+                        console.log('headers', req.rawHeaders);
+
                         req.on("data", (chunk: Buffer) => {
                             resData = chunk;
                             console.log('chunk', chunk);
-                            getSoket().send(chunk); // actively send msg
-                            /* evEmitter.on('responseQR',(res:Response)=>{                                
-                                res.status(200).type("jpeg").end(chunk);
-                            }) */
-                            //evEmitter.emit('responseQR',chunk)
+                            getSoket()?.send(chunk);
                         });
                     })
                     .on("error", (error) => {
@@ -111,14 +115,13 @@ function getInitBotListenners(): botListenners {
             }
         },
         async onmessage(this: WechatyInterface, msg: MessageInterface) {
-            if (msg.type() !== this.Message.Type.Text) return
-            if (!msg.text()) {
-                //return;
+            if (!this.isLoggedIn) {
+                return console.log('Can not send message because of logged out!');
             }
             console.log("received a message", msg
                 .talker()
-                .name());
-            responseMsg(this, msg);
+                .id);
+            await responseMsg(this, msg);
         }
     }
 }
@@ -142,8 +145,8 @@ export async function createAndRunBot(name: string): Promise<WechatyInterface> {
 
     const bot = WechatyBuilder.build({
         //@ts-ignore
-        puppet:'wechaty-puppet-wechat4u', //new PuppetPadlocal({ token: name /* timeoutSeconds: 8000  */ }),
-        name, //puppetOptions: { token: name, uos: true },
+        puppet: 'wechaty-puppet-wechat4u', 
+        name
     })
     bindBotEvt.call(bot);
 

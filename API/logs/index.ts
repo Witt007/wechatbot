@@ -8,11 +8,12 @@ export interface log extends tableData {
     [index: string]: any
   }
 export function outputLog(token: username , obj: log) {
-    tbLogs.readData<log[]>(token).then((data) => {
+    tbLogs.readData(token).then((datastr) => {
+        let data:log[]=JSON.parse(datastr||"{}");
         if(Object.prototype.toString.call(data)==='[object Array]')
         data.push(obj);
         else data=[obj];
-        tbLogs.writeData<log[]>(token,data);
+        tbLogs.writeData(token,JSON.stringify(data));
         console.log('a log info written:', obj);
     })
 }

@@ -6,37 +6,55 @@ import { outputLog } from "../logs";
 import dotenv from 'dotenv'
 dotenv.config();
 import { database } from "../../data";
-export function initOpenAI(): OpenAIApi {
+function initOpenAI(): OpenAIApi {
   const config: Configuration = new Configuration({
-    organization: "Witt",
-    apiKey: process.env.OPENAI_APIKEY,
+    //organization: "Witt",
+    apiKey: status.apikey,
   });
   return new OpenAIApi(config);
 }
 const configTB = database.createTable("configMsg")
+const chatRecordsTB = database.createTable("chatRecords")
 type statusType = {
   start: boolean,
   talkInRoom: boolean,
   talkWith: string[],
   noRules: boolean,
-  randomness: number,
-  n: number
+  randomness: number,frequency?:number,
+  n: number,
+  maxLenght: number,
+  apikey?: string
 }
 let status: statusType = {
   start: true,
   talkInRoom: false,
   talkWith: [], noRules: false
-  , randomness: 0, n: 1
+  , randomness: 0, n: 1,
+  apikey: process.env.OPENAI_APIKEY, maxLenght: 500
 }
+let openai = initOpenAI();
+
+
+function trimStringReverse(str: string, maxLength: number) {
+  if (str.length > maxLength) {
+    return str.slice(-(maxLength))
+  } else {
+    return str
+  }
+}
+
 
 
 export async function responseMsg(bot: WechatyInterface, msg: MessageInterface) {
   let text = msg.text();
-  let talker = await msg.talker();
-  let alias = await talker.name() as string
+  let talker = msg.talker();
+  const alias = talker.name() || (await talker.alias()) || ''
+  const currentUserName = bot.currentUser.name() || (await bot.currentUser.alias()) || ''
+  console.log('talker.name', alias);
+
   let phones = await talker.phone()
   let isSentByMe = msg.self();
-  const myself = bot.currentUser.name()//msg.listener()?.name()
+  const myself = currentUserName;//msg.listener()?.name()
   /*   msg.toSayable().then((say) => {//相当于拷贝人家的文字从而转发
       console.log('sayable', say);
     }) */
@@ -46,93 +64,118 @@ export async function responseMsg(bot: WechatyInterface, msg: MessageInterface) 
   let roomMembers_serilizable = roomMember?.map(async (contact) => {
     const name = contact.name(),
       city = contact.city(),
-      gender = contact.gender().toString()
+      gender = contact.gender()?.toString()
       , phones = await contact.phone()
     return { name, city, gender, phones }
   })
   const date = msg.date();
-  console.log('isSentByMe', isSentByMe);
+  console.log('isSentByMe', isSentByMe, 'mention me', MentionedMe);
 
-  function setRules() {
-    if (isSentByMe) {
-      switch (true) {
-        case /^stop$/g.test(text):
-          status.start = false;
-          break;
-        case /^start$/g.test(text):
-          status.start = true;
-          break;
-        case /^not room$/g.test(text):
-          status.talkInRoom = false;
-          break;
-        case /^room$/g.test(text):
-          status.talkInRoom = true;
-          break;
-        case /@(.*)/g.test(text):
-          const at = text.replace(/@/g, '');
-          status.talkWith.push(at);
-          break;
-        case /not@(.*)/g.test(text):
-          const notAt = text.replace(/not@/g, '');
-          status.talkWith = status.talkWith.filter((v) => v != notAt);
-          break;
-        case /^@$/g.test(text):
-          status.noRules = true;
-          break;
-        case /^0$/g.test(text):
-          status.noRules = false;
-          break;
-        case /^r$/g.test(text):
-          status.randomness = Number(text.replace('r', ''));
-          break;
-        case /^n$/g.test(text):
-          status.n = Number(text.replace('n', ''));
-          break;
+  const writeConf=()=> configTB.writeData(currentUserName, JSON.stringify(status)).then((a) => {
+    console.log('write config data ', a);
+  });
+  if (isSentByMe) {
+    switch (true) {
+      case /^stop$/.test(text):
+        status.start = false;
+        return writeConf();
+      case /^start$/.test(text):
+        status.start = true;
+        return writeConf();
+      case /^not room$/.test(text):
+        status.talkInRoom = false;
+        return writeConf();
+      case /^room$/.test(text):
+        status.talkInRoom = true;
+        return writeConf();
+      case /@(.*)/g.test(text):
+        const at = text.replace(/@/g, '');
+        status.talkWith.push(at);
+        return writeConf();
+      case /not@(.*)/g.test(text):
+        const notAt = text.replace(/not@/g, '');
+        status.talkWith = status.talkWith.filter((v) => v != notAt);
+        return writeConf();
+      case /^@$/.test(text):
+        status.noRules = true;
+        return writeConf();
+      case /^0$/.test(text):
+        status.noRules = false;
+        return writeConf();
+      case /^r\d+$/.test(text):
+        status.randomness = Number(text.replace('r', ''));
+        return writeConf();
+      case /^n\d+$/.test(text):
+        status.n = Number(text.replace('n', ''));
+        return writeConf();
+      case /^f-?\d+$/.test(text):
+        status.frequency = Number(text.replace('f', ''));
+        return writeConf();
+      case /^key.*/.test(text):
+        status.apikey = text.replace('key', '');
+        openai = initOpenAI();
+        return writeConf();
+      case /^l\d+$/.test(text):
+        status.maxLenght = Number(text.replace('l', ''));
+        return writeConf();
 
-        default:
-          break;
-      }
-      configTB.writeData(bot.name(), status).then((a)=>{console.log('write config data ',a);
-      });
+      default:
+        break;
     }
+   
   }
 
-  setRules()
 
-  if (!text) {
-    return
+  if (msg.type() === bot.Message.Type.ChatHistory || msg.type() === bot.Message.Type.MiniProgram || msg.type() === bot.Message.Type.GroupNote
+    || msg.type() === bot.Message.Type.Post) {
+    return console.log('msg.type', msg.type());
+
   }
 
   async function useRules() {
-    const data: statusType = await configTB.readData(bot.name());
-    console.log('configtb',data);
-    
-    data &&Object.keys(data).length&& (status = data) || configTB.writeData(bot.name(), status);
+    const datastr = await configTB.readData(currentUserName);
+    const data: statusType = JSON.parse(datastr||"{}")
+
+    Object.keys(data).length && (status = data) || configTB.writeData(currentUserName, JSON.stringify(status));
+
     return status.start && (
-      /^( ).*( )$/.test(text) || !isSentByMe && (status.noRules || status.talkWith.includes(talker.name()) || status.talkInRoom && room))
+      /^( ).*( )$/.test(text) || !isSentByMe &&
+      (status.noRules || status.talkWith.includes(talker.name()) || status.talkInRoom && room || MentionedMe))
   }
-  useRules().then(async (stat) => {
-console.log(status);
+  
+ await useRules().then(async (stat) => {
+    console.log('configtb', status);
+
 
     if (<boolean>stat) {
       const headers: AxiosRequestHeaders = new AxiosHeaders();
-      headers.setAuthorization('Bearer ' + process.env.OPENAI_APIKEY);
+      headers.setAuthorization('Bearer ' + status.apikey);
       headers.setContentType('application/json');
+
+      const chatHistory = await chatRecordsTB.readData(alias);
+      const trimendText = text.trimEnd()
+      const punctuation = /.*(\?|？|\.|。|!|！)$/g.test(trimendText); //doing trimend,because of /( ) ( )/ 
+      const prompt =chatHistory + '<|endoftext|>' +
+        (punctuation ? text : (/.*吗$/.test(trimendText) ? trimendText + "？" : trimendText + "."));
+      const Lm = ["gpt-4", 'text-davinci-003', 'gpt-3.5-turbo']
+console.log('发送文本',trimStringReverse(prompt,status.maxLenght));
+
+
       //@ts-ignore
       const completionBody: CreateCompletionRequest = {
-        max_tokens: 3800,
-        prompt: text, temperature: status.randomness,
+        max_tokens: status.maxLenght,
+        model: Lm[1],
+        prompt:trimStringReverse(prompt,status.maxLenght), temperature: status.randomness,
         //top_p: 1,
-        frequency_penalty: 0.0,
-        presence_penalty: 0.0, n: status.n,
-         stop: "\n",
+        frequency_penalty: status.frequency,
+        presence_penalty: 2, n: status.n,
+        //stop: "\n",
       }
-      const Lm = ["gpt-4", 'text-davinci-003', 'gpt-3.5-turbo']
-      const res: CreateCompletionResponse = await axios.post(`https://api.openai.com/v1/engines/${Lm[1]}/completions`,
+      const res: CreateCompletionResponse = /* await axios.post(`https://api.openai.com/v1/engines/${Lm[1]}/completions`,
         completionBody, {
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.OPENAI_APIKEY}`
+          'Authorization': `Bearer ${status.apikey}`
         }
       }).then((res: AxiosResponse) => {
         console.log('status', res.status);
@@ -141,36 +184,29 @@ console.log(status);
           return res.data;
         }
 
-      }).catch((reson) => console.log('requesting openai failed', reson)
-      )
-      /*   openai.createCompletion({
-          prompt: text ||
-            "The following is a conversation with an AI assistant. The assistant is helpful, creative, clever, and very friendly.\n\nHuman: Hello, who are you?\nAI: I am an AI created by OpenAI. How can I help you today?\nHuman: I'd like to cancel my subscription.\nAI:",
-          model: "text-davinci-003",
-          //prompt: "I am a highly intelligent question answering bot. If you ask me a question that is rooted in truth, I will give you the answer. If you ask me a question that is nonsense, trickery, or has no clear answer, I will respond with \"Unknown\".\n\nQ: What is human life expectancy in the United States?\nA: Human life expectancy in the United States is 78 years.\n\nQ: Who was president of the United States in 1955?\nA: Dwight D. Eisenhower was president of the United States in 1955.\n\nQ: Which party did he belong to?\nA: He belonged to the Republican Party.\n\nQ: What is the square root of banana?\nA: Unknown\n\nQ: How does a telescope work?\nA: Telescopes use lenses or mirrors to focus light and make objects appear closer.\n\nQ: Where were the 1992 Olympics held?\nA: The 1992 Olympics were held in Barcelona, Spain.\n\nQ: How many squigs are in a bonk?\nA: Unknown\n\nQ: Where is the Valley of Kings?\nA:",
-          temperature: 0,
-          max_tokens: 100,
-          top_p: 1,
-          frequency_penalty: 0.0,
-          presence_penalty: 0.0,
-          stop: ["\n"],
-        }, { headers }).then((res) => {
-          let say = res.data.choices[0].text || "";
-          console.log('it said', res.data.choices);
-      
-        }) */
+      }).catch((reson) => console.log('requesting openai failed', reson) 
+      )*/
+        await openai.createCompletion(completionBody).then((res) => {
+          return res.data
+        })
 
 
       //msg.say(say);
 
-      console.log('it said', res.choices);
-      const texts = res.choices.map((choice) => {
-        const resText = choice.text?.trim();
-        resText && msg.say(resText);
-        return resText
-      });
+      res && console.log('it said', res.object, res.usage?.total_tokens, 'prompt_tokens',
+        res.usage?.prompt_tokens, 'completion_tokens', res.usage?.completion_tokens);
 
-      outputLog(myself, { "消息日期：": date, '消息：': alias + ' ' + phones + '说：' + text, resText: myself + '回复道：' + texts[0], "是否@了我：": MentionedMe, '群聊：': roomMembers_serilizable });
+      if (res?.choices) {
+        const texts = await res.choices.map((choice) => {
+          const resText = choice.text?.trim();
+          resText && msg.say(resText.replace(/(.*)(\?|？|\.|。|!|！)$/, '$1'));
+          return resText
+        });
+        console.log('是否有alias值', alias,prompt +texts.join(''));
+
+        chatRecordsTB.writeData(alias, prompt + texts?.join(''));
+        outputLog(myself, { "消息日期：": date, '消息：': alias + ' ' + phones + '说：' + text, resText: myself + '回复道：' + texts[0], "是否@了我：": MentionedMe, '群聊：': roomMembers_serilizable });
+      } else console.log('requesting OpenAI server failed!');
 
 
     }
