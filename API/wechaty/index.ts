@@ -86,10 +86,11 @@ function getInitBotListenners(): botListenners {
         },
         async onlogout(this: WechatyInterface) {
             console.log("logout");
-            deactiveUser(await getCurrUserName.call(this));
+           await this.stop();
+           await deactiveUser(await getCurrUserName.call(this));
             //FIXME:
             mapBots.delete(this.name());
-            this.stop()
+            
         },
         onscan(this: WechatyInterface, qrcode: string, status) {
             console.log("onscan");
