@@ -46,7 +46,7 @@ const cert = fs.readFileSync(path.join(__dirname, 'certs/v2ray.pem'));
 const certKey = fs.readFileSync(path.join(__dirname, 'certs/v2ray.key'));
 const server = https.createServer({ cert, key: certKey }, app);
 //const server = http.createServer( app);
-server.listen(88,"0.0.0.0");
+server.listen(88);
 
 initWs(server);
 

@@ -6,6 +6,7 @@ import { outputLog } from "../logs";
 import dotenv from 'dotenv'
 dotenv.config();
 import { database } from "../../data";
+import * as autoMsg  from "./autoMsg";
 function initOpenAI(): OpenAIApi {
   const config: Configuration = new Configuration({
     organization: "Witt",
@@ -86,7 +87,7 @@ exports.responseMsg = async function responseMsg(bot: WechatyInterface, msg: Mes
     return { name, city, gender, phones }
   })
   const date = msg.date();
-  !isSentByMe && console.log("当前用户：", currentUserName, 'talker.name', alias, '当前话题：', status.newTopic,'isRoom',room, 'mention me', MentionedMe, text);
+  !isSentByMe && console.log('type',msg.type,"当前用户：", currentUserName, 'talker.name', alias, '当前话题：', status.newTopic,'isRoom',room, 'mention me', MentionedMe, text);
 
   const writeConf = () => configTB.writeData(currentUserName, JSON.stringify(status)).then((a) => {
     console.log('write config data ', '配置信息', status);
