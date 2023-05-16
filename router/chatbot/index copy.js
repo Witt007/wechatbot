@@ -37,7 +37,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const wechaty_1 = require("wechaty");
-const wechaty_puppet_padlocal_1 = require("wechaty-puppet-padlocal");
 const https_1 = __importDefault(require("https"));
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
@@ -237,7 +236,7 @@ function createAndRunBot(token) {
     return __awaiter(this, void 0, void 0, function* () {
         const bot = wechaty_1.WechatyBuilder.build({
             //@ts-ignore
-            puppet: new wechaty_puppet_padlocal_1.PuppetPadlocal({ token: "67f5cc1db0f84923827097fd1bfe6e7d" }),
+            puppet: 'wechaty-puppet-wechat4u',
             name: "wechat" + token,
             /*  puppetOptions: {
                uos: true,

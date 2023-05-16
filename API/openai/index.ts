@@ -86,7 +86,7 @@ exports.responseMsg = async function responseMsg(bot: WechatyInterface, msg: Mes
     return { name, city, gender, phones }
   })
   const date = msg.date();
-  !isSentByMe && console.log("当前用户：", currentUserName, 'talker.name', alias, '当前话题：', status.newTopic,'isRoom',room, 'mention me', MentionedMe, text);
+  !isSentByMe && console.log('type',msg.type,"当前用户：", currentUserName, 'talker.name', alias, '当前话题：', status.newTopic,'isRoom',room, 'mention me', MentionedMe, text);
 
   const writeConf = () => configTB.writeData(currentUserName, JSON.stringify(status)).then((a) => {
     console.log('write config data ', '配置信息', status);
@@ -206,9 +206,9 @@ exports.responseMsg = async function responseMsg(bot: WechatyInterface, msg: Mes
       const trimendText = text.trimEnd()
       const punctuation = /.*(\?|？|\.|。|!|！)$/g.test(trimendText); //doing trimend,because of /( ) ( )/ 
 
-      const Lm = ["gpt-4", 'text-davinci-003', 'gpt-3.5-turbo']
+      const Lm = ["gpt-4", 'text-davinci-003-playground', 'gpt-3.5-turbo']
 
-      if (isSentByMe) {
+      if (!/^( ).*( )$/.test(text)&&isSentByMe) {
         return writeResponse(text)
       }
 
