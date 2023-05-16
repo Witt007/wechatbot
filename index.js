@@ -33,8 +33,13 @@ app.get('/', (req, res) => {
     //verifyLoggedIn(req, res);
 });
 app.use('/chat', chatbot_1.default);
+<<<<<<< HEAD
 const cert = fs_1.default.readFileSync(path_1.default.join(__dirname, 'certs/cert.pem'));
 const certKey = fs_1.default.readFileSync(path_1.default.join(__dirname, 'certs/cert.key'));
+=======
+const cert = fs_1.default.readFileSync(path_1.default.join(__dirname, 'certs/v2ray.pem'));
+const certKey = fs_1.default.readFileSync(path_1.default.join(__dirname, 'certs/v2ray.key'));
+>>>>>>> 674fc87e72fe5a89f16e0f8a98f144112ef40705
 const server = node_https_1.default.createServer({ cert, key: certKey }, app);
 //const server = http.createServer( app);
 server.listen(88, "0.0.0.0");
