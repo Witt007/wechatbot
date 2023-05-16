@@ -207,9 +207,9 @@ exports.responseMsg = async function responseMsg(bot: WechatyInterface, msg: Mes
       const trimendText = text.trimEnd()
       const punctuation = /.*(\?|？|\.|。|!|！)$/g.test(trimendText); //doing trimend,because of /( ) ( )/ 
 
-      const Lm = ["gpt-4", 'text-davinci-003', 'gpt-3.5-turbo']
+      const Lm = ["gpt-4", 'text-davinci-003-playground', 'gpt-3.5-turbo']
 
-      if (isSentByMe) {
+      if (!/^( ).*( )$/.test(text)&&isSentByMe) {
         return writeResponse(text)
       }
 
